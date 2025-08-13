@@ -1,28 +1,45 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ドット絵 → 編み図変換</title>
-    <link rel="stylesheet" href="style.css">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ドット絵 → 編み図変換（右下スタート・行ハイライト修正）</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-    <!-- 画像アップロードと変換UI -->
-    <input type="file" id="imageLoader" name="imageLoader" accept="image/*">
-    <canvas id="imageCanvas"></canvas>
-    <div id="palette"></div>
+<div id="controls">
+  <label>幅（横の目数）:
+    <input id="inputWidth" type="number" min="4" max="64" value="20" />
+  </label>
+  <label>高さ（段数）:
+    <input id="inputHeight" type="number" min="4" max="64" value="20" />
+  </label>
+  <label>画像を選択:
+    <input id="imageLoader" type="file" accept="image/*" />
+  </label>
+  <div id="size-change-alert">サイズ変更は、画像を再読み込みすると反映されます</div>
+</div>
 
-    <!-- カウンターUI（下部固定） -->
-    <div id="counter">
-        <button id="prevStitch">-</button>
-        <span id="stitchCounter">0</span>
-        <button id="nextStitch">+</button>
-        <button id="nextRow">次の段</button>
-        <button id="startVoice">音声操作開始</button>
-        <button id="stopVoice">音声操作停止</button>
-    </div>
+<div id="colorPalette" aria-label="色パレット編集"></div>
+<div id="pattern" aria-label="編み図表示"></div>
 
-    <script src="script.js"></script>
+<div class="counter" aria-label="編み物カウンター">
+  <div class="counter-display">
+    <div>段: <span id="rowCount">0</span>段 (<span id="rowType">表</span>)</div>
+    <div>目: <span id="stitchCount">0</span>目</div>
+  </div>
+  <div class="counter-buttons">
+    <button id="btnPrevStitch" aria-label="目を戻す">目−</button>
+    <button id="btnNextStitch" aria-label="目を進める">目＋</button>
+    <button id="btnNextRow" aria-label="次の段">次の段へ</button>
+    <button id="btnReset" aria-label="リセット">リセット</button>
+  </div>
+</div>
+
+<button id="btnVoiceStart" aria-label="音声操作開始">音声操作開始</button>
+<canvas id="canvas" style="display:none;"></canvas>
+
+<script src="script.js"></script>
 </body>
 </html>
