@@ -20,16 +20,18 @@ input[type=file]{ margin-top:6px; }
 
 #size-change-alert{ display:none; color:#d75e00; font-weight:bold; text-align:center; width:100%; margin-top:6px; }
 
-/* pattern */
-#pattern{
-  width:100%;
-  max-width:100vw;
-  overflow:auto;
-  margin-bottom:140px; /* カウンター分の余白 */
-  border-radius:12px;
-  background:#f7e8d0;
-  padding:8px;
+/* 画面フィット用の内側ラッパー */
+#patternInner{
+  transform-origin: left top;
+  display: inline-block;
+  will-change: transform;
 }
+
+/* 念のため：パターン領域はスクロール可 */
+#pattern{
+  overflow: auto;
+}
+
 table{ border-collapse:separate; border-spacing:4px; width:100%; }
 td{
   width:34px; height:34px; border-radius:10px;
