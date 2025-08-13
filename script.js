@@ -17,10 +17,37 @@
   const btnVoiceStart = document.getElementById('btnVoiceStart');
   const sizeChangeAlert = document.getElementById('size-change-alert');
 
+  // ====== 連続待機トグル（UIをJSで生成）======
+  const toggleWrap = document.createElement('div');
+  toggleWrap.style.position = 'fixed';
+  toggleWrap.style.right = '12px';
+  toggleWrap.style.top = '56px';
+  toggleWrap.style.zIndex = '11000';
+  toggleWrap.style.background = 'rgba(243,222,192,0.98)';
+  toggleWrap.style.padding = '8px 10px';
+  toggleWrap.style.borderRadius = '10px';
+  toggleWrap.style.boxShadow = '0 4px 12px rgba(0,0,0,0.12)';
+  toggleWrap.style.display = 'flex';
+  toggleWrap.style.alignItems = 'center';
+  toggleWrap.style.gap = '6px';
+  const toggle = document.createElement('input');
+  toggle.type = 'checkbox';
+  toggle.id = 'autoContinueToggle';
+  toggle.checked = true; // 既定：ON
+  const toggleLabel = document.createElement('label');
+  toggleLabel.setAttribute('for', 'autoContinueToggle');
+  toggleLabel.textContent = '連続待機 ON/OFF';
+  toggleLabel.style.userSelect = 'none';
+  toggleWrap.appendChild(toggle);
+  toggleWrap.appendChild(toggleLabel);
+  document.body.appendChild(toggleWrap);
+
   // State
   let totalRows = 0, totalCols = 0;
-  let cellMap = []; // data rows: index 0 = bottom row; each row: array of cells left->right
-  let currentRow = 1; // 1 = bottom row
+  // データ行: index 0 = 最下段（左→右）
+  let cellMap = [];
+  // カーソル: currentRow=1..totalRows（1=最下段）、currentStitchInRow=1..totalCols
+  let currentRow = 1;
   let currentStitchInRow = 1;
 
   let yarnColors = [
@@ -31,7 +58,7 @@
     {hex:'#0000ff', symbol:'★'}
   ];
 
-  // util
+  // ===== util =====
   function hexToRgb(hex){ const bigint = parseInt(hex.slice(1),16); return [(bigint>>16)&255,(bigint>>8)&255, bigint&255]; }
   function rgbToHex(r,g,b){ return '#'+[r,g,b].map(x=>x.toString(16).padStart(2,'0')).join(''); }
   function colorDistance(a,b){ return (a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2; }
@@ -62,16 +89,19 @@
     return idx;
   }
 
-  // render: visually top-to-bottom, left-to-right cells
+  // ===== render =====
+  // 画面表示: 上から下へ（見た目の上が本当に上）
   function renderPattern(){
-    if(!totalRows || !totalCols){ patternDiv.innerHTML = '<div style="text-align:center;color:#7a5a2a;padding:18px;">編み図がありません</div>'; return; }
+    if(!totalRows || !totalCols){
+      patternDiv.innerHTML = '<div style="text-align:center;color:#7a5a2a;padding:18px;">編み図がありません</div>';
+      return;
+    }
     let html = '<table>';
-    // display rows from top (data index totalRows-1) down to bottom (index 0)
+    // 表示は data の最上段（index totalRows-1）→ 最下段（index 0）
     for(let r = totalRows - 1; r >= 0; r--){
-      const rowNumber = r + 1; // 1 = bottom
-      const isRightToLeft = (rowNumber % 2 === 1); // odd row = right->left knitting
-      const arrow = isRightToLeft ? '←' : '→'; // ← means knitting right->left
-      // put data-row on TR so we can easily highlight the whole row
+      const rowNumber = r + 1; // 1=最下段
+      const isRightToLeft = (rowNumber % 2 === 1); // 奇数段=右→左
+      const arrow = isRightToLeft ? '←' : '→';
       html += `<tr data-row="${r}"><td class="row-label">${rowNumber} (${isRightToLeft ? '表' : '裏'}) ${arrow}</td>`;
       const row = cellMap[r];
       for(let c = 0; c < row.length; c++){
@@ -86,37 +116,39 @@
     updateCounterDisplay(true);
   }
 
-  // compute data column index from currentRow/currentStitchInRow
+  // 現在段の編む向きに基づく列 index
   function getColumnIndex(){
     const isRightToLeft = (currentRow % 2 === 1);
     return isRightToLeft ? (totalCols - currentStitchInRow) : (currentStitchInRow - 1);
   }
 
-  // highlight current row (TR) and current stitch (TD). autoScroll when requested.
+  // ===== ハイライト & 自動スクロール =====
   function updateCounterDisplay(autoScroll = false){
-    document.getElementById('rowCount').textContent = currentRow;
-    document.getElementById('rowType').textContent = (currentRow % 2 === 1) ? '表' : '裏';
-    document.getElementById('stitchCount').textContent = currentStitchInRow;
+    rowCountEl.textContent = currentRow;
+    rowTypeEl.textContent = (currentRow % 2 === 1) ? '表' : '裏';
+    stitchCountEl.textContent = currentStitchInRow;
 
-    // remove previous highlights
+    // 既存ハイライト解除
     patternDiv.querySelectorAll('tr').forEach(tr => tr.classList.remove('current-row'));
     patternDiv.querySelectorAll('td').forEach(td => td.classList.remove('current-stitch'));
 
-    if(!totalCols || !cellMap.length) return;
+    if(!totalRows || !totalCols) return;
 
     const rowIdx = currentRow - 1;
     const colIdx = getColumnIndex();
 
-    // highlight TR
+    // TR ハイライト
     const tr = patternDiv.querySelector(`tr[data-row="${rowIdx}"]`);
     if(tr) tr.classList.add('current-row');
 
-    // highlight TD within that TR
+    // TD ハイライト & スクロール
     const td = tr ? tr.querySelector(`td[data-col="${colIdx}"]`) : null;
     if(td){
       td.classList.add('current-stitch');
       if(autoScroll){
+        // パターン内で中央へ
         td.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        // 固定カウンターで隠れないよう微調整
         setTimeout(()=> {
           const rect = td.getBoundingClientRect();
           const viewportHeight = window.innerHeight;
@@ -131,7 +163,7 @@
     }
   }
 
-  // navigation
+  // ===== ナビゲーション =====
   function incrementStitch(){
     if(currentStitchInRow < totalCols){
       currentStitchInRow++;
@@ -163,7 +195,7 @@
     updateCounterDisplay(true);
   }
 
-  // build pattern from image
+  // ===== 画像→パターン構築 =====
   function buildPatternFromImage(img, w, h){
     canvas.width = w; canvas.height = h;
     ctx.imageSmoothingEnabled = false;
@@ -174,6 +206,7 @@
     extracted.forEach((hex,i)=>{ if(yarnColors[i]) yarnColors[i].hex = hex; });
     totalCols = w; totalRows = h;
     cellMap = [];
+    // data index 0 = 最下段（y=h-1）→ 上へ
     for(let y = h-1; y >= 0; y--){
       const row = [];
       for(let x = 0; x < w; x++){
@@ -184,28 +217,29 @@
       }
       cellMap.push(row);
     }
-    document.getElementById('size-change-alert').style.display = 'none';
+    sizeChangeAlert.style.display = 'none';
     renderPattern();
     updateColorPaletteUI();
     resetCounter();
     setTimeout(()=> updateCounterDisplay(true), 120);
   }
 
-  // click to toggle color
+  // ===== セル編集 =====
   function onPatternClick(e){
     const td = e.target.closest('td');
     if(!td || td.classList.contains('row-label')) return;
     const tr = td.parentElement;
-    const domRowIndex = Number(tr.dataset.row);
-    const col = Number(td.dataset.col);
-    if(Number.isInteger(domRowIndex) && Number.isInteger(col) && cellMap[domRowIndex] && cellMap[domRowIndex][col]){
-      let idx = cellMap[domRowIndex][col].colorIndex;
+    const dataRow = Number(tr.dataset.row);
+    const dataCol = Number(td.dataset.col);
+    if(Number.isInteger(dataRow) && Number.isInteger(dataCol) && cellMap[dataRow] && cellMap[dataRow][dataCol]){
+      let idx = cellMap[dataRow][dataCol].colorIndex;
       idx = (idx + 1) % yarnColors.length;
-      cellMap[domRowIndex][col].colorIndex = idx;
+      cellMap[dataRow][dataCol].colorIndex = idx;
       renderPattern();
     }
   }
 
+  // ===== パレット =====
   function updateColorPaletteUI(){
     colorPaletteDiv.innerHTML = '';
     yarnColors.forEach((c,i)=>{
@@ -217,7 +251,7 @@
     });
   }
 
-  // events
+  // ===== イベント =====
   imageLoader.addEventListener('change', e => {
     const file = e.target.files && e.target.files[0];
     if(!file) return;
@@ -243,47 +277,104 @@
   btnNextRow.addEventListener('click', ()=> nextRow());
   btnReset.addEventListener('click', ()=> resetCounter());
 
-  // speech recognition
-  let recognition = null, recognizing = false;
+  // ===== 音声認識（Android連続待機対応）=====
+  let recognition = null;
+  let recognizing = false;
+  // 連続待機ON/OFF（UIトグルと連動）
+  let autoContinue = toggle.checked;
+  let stopRequested = false; // ユーザーが停止ボタンを押したか
+
+  toggle.addEventListener('change', () => {
+    autoContinue = toggle.checked;
+    // 連続待機OFFへ切り替えた際、今録音中ならそのまま継続。onendの自動再開だけ止まります。
+  });
+
   function initRecognition(){
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if(!SR) return null;
     const rec = new SR();
-    rec.lang = 'ja-JP'; rec.interimResults = false; rec.continuous = true;
-    rec.onstart = ()=>{ recognizing = true; btnVoiceStart.textContent = '音声停止'; btnVoiceStart.style.background = '#a05a00'; };
-    rec.onend = ()=>{ recognizing = false; btnVoiceStart.textContent = '音声操作開始'; btnVoiceStart.style.background = ''; };
-    rec.onerror = e => console.error('Speech error', JSON.stringify(e));
-    rec.onresult = ev => {
-      for(let i = ev.resultIndex; i < ev.results.length; i++){
-        if(ev.results[i].isFinal){
+    rec.lang = 'ja-JP';
+    rec.interimResults = false;
+    rec.continuous = true; // 連続モード
+    rec.onstart = () => {
+      recognizing = true;
+      btnVoiceStart.textContent = autoContinue ? '音声停止（連続待機中）' : '音声停止';
+      btnVoiceStart.style.background = '#a05a00';
+    };
+    rec.onend = () => {
+      recognizing = false;
+      btnVoiceStart.textContent = '音声操作開始';
+      btnVoiceStart.style.background = '';
+      // Androidは1回結果が出た後に勝手にonendすることが多いので自動再開
+      if (!stopRequested && autoContinue) {
+        try { rec.start(); } catch(e) { /* 二重start防止 */ }
+      }
+    };
+    rec.onerror = (e) => {
+      console.warn('Speech error', e);
+      if (!stopRequested && autoContinue) {
+        setTimeout(() => { try { rec.start(); } catch(_){} }, 500);
+      }
+    };
+    rec.onresult = (ev) => {
+      for (let i = ev.resultIndex; i < ev.results.length; i++){
+        if (ev.results[i].isFinal){
           const text = ev.results[i][0].transcript.trim();
           console.log('音声:', text);
           handleVoiceCommand(text);
+          // 連続待機中は speak() をガード（録音が切れるのを防ぐ）
+          // speakは別関数で制御
         }
       }
     };
     return rec;
   }
+
   function handleVoiceCommand(text){
     const t = text.replace(/\s+/g,'').toLowerCase();
-    if(/次/.test(t)){ nextRow(); speak('次の段へ'); return; }
-    if(/プラス/.test(t)){ incrementStitch(); speak('目を一つ進めます'); return; }
-    if(/マイナス/.test(t)){ decrementStitch(); speak('目を一つ戻します'); return; }
-    if(/リセット/.test(t)){ resetCounter(); speak('リセットしました'); return; }
-    if(/ストップ/.test(t)){ if(recognition) recognition.stop(); speak('音声操作を停止します'); return; }
+    if(/次の段|つぎのだん|次へ|すすむ|次/.test(t)){ nextRow(); speak('次の段へ'); return; }
+    if(/目プラス|めぷらす|目を進め|一つ進|すすめ|プラス|\+/.test(t)){ incrementStitch(); speak('目を一つ進めます'); return; }
+    if(/目マイナス|めまいなす|目を戻|一つ戻|もどる|マイナス|\-/.test(t)){ decrementStitch(); speak('目を一つ戻します'); return; }
+    if(/リセット|さいしょ|最初に戻/.test(t)){ resetCounter(); speak('リセットしました'); return; }
+    if(/終了|ストップ|やめる|停止/.test(t)){ if(recognition) { stopRequested = true; recognition.stop(); } speak('音声操作を停止します'); return; }
   }
-  function speak(text){ if(!('speechSynthesis' in window)) return; const u = new SpeechSynthesisUtterance(text); u.lang='ja-JP'; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); }
 
+  // 読み上げ：連続待機中はミュート（録音切断を防ぐ）
+  function speak(text){
+    if (autoContinue && recognizing) {
+      if (navigator.vibrate) navigator.vibrate(30); // 軽いバイブのみ（任意）
+      return;
+    }
+    if (!('speechSynthesis' in window)) return;
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'ja-JP';
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+  }
+
+  // ボタン：開始/停止トグル
   btnVoiceStart.addEventListener('click', ()=>{
-    if(!recognition){ recognition = initRecognition(); if(!recognition){ alert('このブラウザは音声認識に対応していません。Chrome等で試してください'); return; } }
-    if(recognizing) recognition.stop(); else recognition.start();
+    if (!recognition) {
+      recognition = initRecognition();
+      if (!recognition) {
+        alert('このブラウザは音声認識に対応していません。Chrome等で試してください');
+        return;
+      }
+    }
+    if (recognizing) {
+      stopRequested = true;
+      try { recognition.stop(); } catch(_) {}
+    } else {
+      stopRequested = false;
+      try { recognition.start(); } catch(_) {}
+    }
   });
 
-  // init
+  // ===== 初期化 =====
   updateColorPaletteUI();
   resetCounter();
 
-  // expose for debugging
+  // デバッグ用
   window._knitApp = { incrementStitch, decrementStitch, nextRow, resetCounter, renderPattern, cellMap, yarnColors };
 
 })();
