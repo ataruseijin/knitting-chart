@@ -89,3 +89,32 @@ button:active{ box-shadow:none; transform:translateY(2px); } button:hover{ backg
   button{ padding:8px 12px; font-size:14px; min-width:52px; }
   #controls{ flex-direction:column; gap:10px; align-items:stretch; }
 }
+/* スケールの基準を中央上に＆中央寄せ */
+#patternInner{
+  transform-origin: top center;   /* ← left top から変更 */
+  display: block;                 /* 中央寄せ用 */
+  margin: 0 auto;                 /* 中央寄せ */
+}
+
+/* パターン領域は左右に少し余白を持たせて誤差吸収 */
+#pattern{
+  overflow: auto;
+  padding-left: 8px;
+  padding-right: 8px;
+  box-sizing: border-box;
+}
+
+/* カウンターに隠れない“セーフエリア”を確保（JSが --counter-h を更新） */
+#colorPalette,
+#pattern{
+  margin-bottom: calc(var(--counter-h, 0px) + 16px);
+}
+
+/* iOS系セーフエリアも加味（あれば） */
+:root{
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+#colorPalette,
+#pattern{
+  margin-bottom: calc(var(--counter-h, 0px) + var(--safe-bottom) + 16px);
+}
