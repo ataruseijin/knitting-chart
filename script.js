@@ -19,11 +19,9 @@
 
   // ===== 状態 =====
   let totalRows = 0, totalCols = 0;
-  // データ行: index 0 = 最下段（左→右）
-  let cellMap = [];
-  // カーソル: currentRow=1..totalRows（1=最下段）、currentStitchInRow=1..totalCols
-  let currentRow = 1;
-  let currentStitchInRow = 1;
+  let cellMap = []; // index 0 = 最下段
+  let currentRow = 1;      // 1..totalRows（1=最下段）
+  let currentStitchInRow = 1; // 1..totalCols
 
   let yarnColors = [
     {hex:'#000000', symbol:'■'},
@@ -71,7 +69,7 @@
       return;
     }
     let html = '<table>';
-    // 表示: 最上段（index totalRows-1）→ 最下段（index 0）
+    // 表示は最上段（index totalRows-1）→ 最下段（index 0）
     for(let r = totalRows - 1; r >= 0; r--){
       const rowNumber = r + 1; // 1=最下段
       const isRightToLeft = (rowNumber % 2 === 1); // 奇数段=右→左
@@ -90,19 +88,16 @@
     updateCounterDisplay(true);
   }
 
-  // 現在段の編む向きに基づく列 index
   function getColumnIndex(){
     const isRightToLeft = (currentRow % 2 === 1);
     return isRightToLeft ? (totalCols - currentStitchInRow) : (currentStitchInRow - 1);
   }
 
-  // ===== ハイライト & 自動スクロール =====
   function updateCounterDisplay(autoScroll = false){
     rowCountEl.textContent = currentRow;
     rowTypeEl.textContent = (currentRow % 2 === 1) ? '表' : '裏';
     stitchCountEl.textContent = currentStitchInRow;
 
-    // 既存ハイライト解除
     patternDiv.querySelectorAll('tr').forEach(tr => tr.classList.remove('current-row'));
     patternDiv.querySelectorAll('td').forEach(td => td.classList.remove('current-stitch'));
 
@@ -111,11 +106,9 @@
     const rowIdx = currentRow - 1;
     const colIdx = getColumnIndex();
 
-    // TR ハイライト
     const tr = patternDiv.querySelector(`tr[data-row="${rowIdx}"]`);
     if(tr) tr.classList.add('current-row');
 
-    // TD ハイライト & スクロール
     const td = tr ? tr.querySelector(`td[data-col="${colIdx}"]`) : null;
     if(td){
       td.classList.add('current-stitch');
@@ -178,7 +171,6 @@
     extracted.forEach((hex,i)=>{ if(yarnColors[i]) yarnColors[i].hex = hex; });
     totalCols = w; totalRows = h;
     cellMap = [];
-    // data index 0 = 最下段（y=h-1）→ 上へ
     for(let y = h-1; y >= 0; y--){
       const row = [];
       for(let x = 0; x < w; x++){
@@ -252,7 +244,8 @@
   // ===== 音声認識（デフォルト連続待機 / 停止で完全停止）=====
   let recognition = null;
   let recognizing = false;
-  let stopRequested = false; // ユーザーが停止を押したらtrue
+  let shouldBeListening = false; // true の間は自動再開を続ける
+  let restartTimer = null;
 
   function initRecognition(){
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -260,79 +253,71 @@
     const rec = new SR();
     rec.lang = 'ja-JP';
     rec.interimResults = false;
-    rec.continuous = true; // 連続モード
+    rec.continuous = true;
+
     rec.onstart = () => {
       recognizing = true;
       btnVoiceStart.textContent = '音声停止（連続待機中）';
       btnVoiceStart.style.background = '#a05a00';
+      // 念のためTTSは常にキャンセル（他の要因で鳴っていたら止める）
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     };
+
     rec.onend = () => {
       recognizing = false;
       btnVoiceStart.textContent = '音声操作開始';
       btnVoiceStart.style.background = '';
-      // ★自動再開：ユーザーが停止を押していない限り、常に再開
-      if (!stopRequested) {
-        try { rec.start(); } catch(e) { /* 二重start防止 */ }
+      if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
+      if (shouldBeListening) {
+        // すぐstartするとInvalidStateになる端末があるので少し待つ
+        restartTimer = setTimeout(() => { try { rec.start(); } catch(_){} }, 300);
       }
     };
+
     rec.onerror = (e) => {
       console.warn('Speech error', e);
-      // 一時的エラーでも止まることがある → 少し待って再開（ユーザー停止でないとき）
-      if (!stopRequested) {
-        setTimeout(() => { try { rec.start(); } catch(_){} }, 500);
+      if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
+      if (shouldBeListening) {
+        restartTimer = setTimeout(() => { try { rec.start(); } catch(_){} }, 600);
       }
     };
+
     rec.onresult = (ev) => {
       for (let i = ev.resultIndex; i < ev.results.length; i++){
         if (ev.results[i].isFinal){
           const text = ev.results[i][0].transcript.trim();
           console.log('音声:', text);
           handleVoiceCommand(text);
-          // 連続待機中は読み上げで録音が切れやすい → speak() でガード
+          // ★ここでは何も喋らない（完全ミュート）
         }
       }
     };
+
+    // Androidでたまに音声終了イベント後に止まる対策（効かない端末もある）
+    rec.onaudioend = () => {/* no-op */};
+    rec.onspeechend = () => {/* no-op */};
+
     return rec;
   }
 
   function handleVoiceCommand(text){
     const t = text.replace(/\s+/g,'').toLowerCase();
-    if(/次の段|つぎのだん|次へ|すすむ|次/.test(t)){ nextRow(); speak('次の段へ'); return; }
-    if(/目プラス|めぷらす|目を進め|一つ進|すすめ|プラス|\+/.test(t)){ incrementStitch(); speak('目を一つ進めます'); return; }
-    if(/目マイナス|めまいなす|目を戻|一つ戻|もどる|マイナス|\-/.test(t)){ decrementStitch(); speak('目を一つ戻します'); return; }
-    if(/リセット|さいしょ|最初に戻/.test(t)){ resetCounter(); speak('リセットしました'); return; }
+    if(/次の段|つぎのだん|次へ|すすむ|次/.test(t)){ nextRow(); return; }
+    if(/目プラス|めぷらす|目を進め|一つ進|すすめ|プラス|\+/.test(t)){ incrementStitch(); return; }
+    if(/目マイナス|めまいなす|目を戻|一つ戻|もどる|マイナス|\-/.test(t)){ decrementStitch(); return; }
+    if(/リセット|さいしょ|最初に戻/.test(t)){ resetCounter(); return; }
     if(/終了|ストップ|やめる|停止/.test(t)){
-      if(recognition){
-        stopRequested = true;     // 以降は自動再開しない
-        try { recognition.stop(); } catch(_) {}
-      }
-      speak('音声操作を停止します');
+      shouldBeListening = false;     // 以降は自動再開しない
+      if (recognition) { try { recognition.stop(); } catch(_) {} }
       return;
     }
   }
 
-  // 読み上げ：連続待機中はミュート（録音切断を防ぐ）
-  function speak(text){
-    if (recognizing) {
-      if (navigator.vibrate) navigator.vibrate(25); // 軽いバイブのみ（任意）
-      return;
-    }
-    if (!('speechSynthesis' in window)) return;
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'ja-JP';
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(u);
-  }
+  // 完全ミュート（TTS/バイブなし）
+  function speak(_text){ /* no-op (mute) */ }
 
   // ボタン：開始/停止トグル
   btnVoiceStart.addEventListener('click', ()=>{
-    // すでに録音中 → 停止（完全停止、再開は自動ではしない）
-    if (recognizing) {
-      stopRequested = true;
-      try { recognition && recognition.stop(); } catch(_) {}
-      return;
-    }
-    // 録音していない → 連続待機開始（以降、自動再開を続ける）
     if (!recognition) {
       recognition = initRecognition();
       if (!recognition) {
@@ -340,8 +325,16 @@
         return;
       }
     }
-    stopRequested = false;
-    try { recognition.start(); } catch(_) {}
+    if (recognizing) {
+      // 停止：自動再開もしない
+      shouldBeListening = false;
+      if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
+      try { recognition.stop(); } catch(_) {}
+    } else {
+      // 連続待機開始：以降 shouldBeListening が true の間はonend/onerrorで自動再開
+      shouldBeListening = true;
+      try { recognition.start(); } catch(_) {}
+    }
   });
 
   // ===== 初期化 =====
