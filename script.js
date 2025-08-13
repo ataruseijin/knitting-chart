@@ -1,5 +1,5 @@
 (() => {
-  // DOM
+  // ===== DOM =====
   const imageLoader = document.getElementById('imageLoader');
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d');
@@ -17,7 +17,7 @@
   const btnVoiceStart = document.getElementById('btnVoiceStart');
   const sizeChangeAlert = document.getElementById('size-change-alert');
 
-  // ===== 状態 =====
+  // ===== State =====
   let totalRows = 0, totalCols = 0;
   // データ行: index 0 = 最下段（左→右）
   let cellMap = [];
@@ -33,7 +33,7 @@
     {hex:'#0000ff', symbol:'★'}
   ];
 
-  // ===== util =====
+  // ===== Utils =====
   const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
   function hexToRgb(hex){ const bigint = parseInt(hex.slice(1),16); return [(bigint>>16)&255,(bigint>>8)&255, bigint&255]; }
   function rgbToHex(r,g,b){ return '#'+[r,g,b].map(x=>x.toString(16).padStart(2,'0')).join(''); }
@@ -65,6 +65,13 @@
     return idx;
   }
 
+  // ===== Safe area (カウンター高さに応じた余白) =====
+  function updateSafeArea(){
+    const counter = document.querySelector('.counter');
+    const h = counter ? counter.getBoundingClientRect().height : 0;
+    document.documentElement.style.setProperty('--counter-h', `${h}px`);
+  }
+
   // ===== 画面フィット =====
   function fitPatternToViewport(){
     const inner = document.getElementById('patternInner');
@@ -87,7 +94,9 @@
     const paletteH = palette ? palette.getBoundingClientRect().height : 0;
     const verticalPadding = 24; // 余裕
 
-    const availableW = vw - 16; // 左右の余白ぶん
+    // 左右に #pattern のpadding 8pxずつを想定
+    const sidePadding = 16;
+    const availableW = Math.max(0, vw - sidePadding);
     const availableH = vh - counterH - controlsH - paletteH - verticalPadding;
 
     // テーブルの実寸
@@ -100,11 +109,11 @@
     const scale = clamp(Math.min(sx, sy), 0, 1);
 
     inner.style.transform = `scale(${scale})`;
-    // スクロール計算用に高さを持たせる
+    // スクロール計算用に高さを持たせる（横は自動でOK）
     inner.style.height = `${tableH * scale}px`;
   }
 
-  // ===== render =====
+  // ===== Render =====
   // 画面表示: 最上段（index totalRows-1）→ 最下段（index 0）
   function renderPattern(){
     if(!totalRows || !totalCols){
@@ -128,8 +137,8 @@
     html += '</table></div>';
     patternDiv.innerHTML = html;
     updateCounterDisplay(true);
-    // DOM反映後にフィット
-    setTimeout(fitPatternToViewport, 0);
+    // DOM反映後にフィット & セーフエリア更新
+    setTimeout(() => { fitPatternToViewport(); updateSafeArea(); }, 0);
   }
 
   // 現在段の編む向きに基づく列 index
@@ -188,6 +197,7 @@
     }
     updateCounterDisplay(true);
     fitPatternToViewport();
+    updateSafeArea();
   }
   function decrementStitch(){
     if(currentStitchInRow > 1){
@@ -198,6 +208,7 @@
     }
     updateCounterDisplay(true);
     fitPatternToViewport();
+    updateSafeArea();
   }
   function nextRow(){
     if(currentRow < totalRows){
@@ -205,6 +216,7 @@
       currentStitchInRow = 1;
       updateCounterDisplay(true);
       fitPatternToViewport();
+      updateSafeArea();
     }
   }
   function resetCounter(){
@@ -212,6 +224,7 @@
     currentStitchInRow = 1;
     updateCounterDisplay(true);
     fitPatternToViewport();
+    updateSafeArea();
   }
 
   // ===== 画像→パターン構築 =====
@@ -240,7 +253,7 @@
     renderPattern();
     updateColorPaletteUI();
     resetCounter();
-    setTimeout(fitPatternToViewport, 120);
+    setTimeout(() => { fitPatternToViewport(); updateSafeArea(); }, 120);
   }
 
   // ===== セル編集 =====
@@ -256,6 +269,7 @@
       cellMap[dataRow][dataCol].colorIndex = idx;
       renderPattern();
       fitPatternToViewport();
+      updateSafeArea();
     }
   }
 
@@ -271,12 +285,13 @@
         sw.style.background = ev.target.value;
         renderPattern();
         fitPatternToViewport();
+        updateSafeArea();
       });
       sw.appendChild(lbl); sw.appendChild(inp); colorPaletteDiv.appendChild(sw);
     });
   }
 
-  // ===== イベント =====
+  // ===== 画像読み込み =====
   imageLoader.addEventListener('change', e => {
     const file = e.target.files && e.target.files[0];
     if(!file) return;
@@ -293,6 +308,7 @@
     reader.readAsDataURL(file);
   });
 
+  // ===== イベント =====
   patternDiv.addEventListener('click', onPatternClick);
   inputWidth.addEventListener('change', ()=> sizeChangeAlert.style.display = 'block');
   inputHeight.addEventListener('change', ()=> sizeChangeAlert.style.display = 'block');
@@ -302,7 +318,7 @@
   btnNextRow.addEventListener('click', ()=> nextRow());
   btnReset.addEventListener('click', ()=> resetCounter());
 
-  // ===== 音声認識（デフォルト連続待機 / 停止で完全停止・読み上げ完全ミュート）=====
+  // ===== 音声認識（連続待機／停止で完全停止・読み上げ完全ミュート）=====
   let recognition = null;
   let recognizing = false;
   let shouldBeListening = false; // true の間はonend/onerrorで自動再開
@@ -320,7 +336,7 @@
       recognizing = true;
       btnVoiceStart.textContent = '音声停止（連続待機中）';
       btnVoiceStart.style.background = '#a05a00';
-      if ('speechSynthesis' in window) window.speechSynthesis.cancel(); // 安全のため常に止める
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel(); // 念のため常に止める
     };
 
     rec.onend = () => {
@@ -329,6 +345,7 @@
       btnVoiceStart.style.background = '';
       if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
       if (shouldBeListening) {
+        // すぐstartするとInvalidStateになる端末があるので少し待つ
         restartTimer = setTimeout(() => { try { rec.start(); } catch(_){} }, 300);
       }
     };
@@ -351,7 +368,6 @@
         }
       }
     };
-
     return rec;
   }
 
@@ -368,7 +384,7 @@
     }
   }
 
-  // 完全ミュート
+  // 完全ミュート（TTS呼ばない）
   function speak(_text){ /* no-op */ }
 
   // ボタン：開始/停止トグル
@@ -393,9 +409,13 @@
   // ===== 初期化 =====
   updateColorPaletteUI();
   resetCounter();
-  window.addEventListener('resize', fitPatternToViewport);
+  updateSafeArea();
+  window.addEventListener('resize', () => { fitPatternToViewport(); updateSafeArea(); });
 
   // デバッグ用
-  window._knitApp = { incrementStitch, decrementStitch, nextRow, resetCounter, renderPattern, cellMap, yarnColors, fitPatternToViewport };
+  window._knitApp = {
+    incrementStitch, decrementStitch, nextRow, resetCounter,
+    renderPattern, cellMap, yarnColors, fitPatternToViewport
+  };
 
 })();
