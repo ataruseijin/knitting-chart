@@ -17,32 +17,73 @@
   const btnVoiceStart = document.getElementById('btnVoiceStart');
   const sizeChangeAlert = document.getElementById('size-change-alert');
 
-  // ====== 連続待機トグル（UIをJSで生成）======
-  const toggleWrap = document.createElement('div');
-  toggleWrap.style.position = 'fixed';
-  toggleWrap.style.right = '12px';
-  toggleWrap.style.top = '56px';
-  toggleWrap.style.zIndex = '11000';
-  toggleWrap.style.background = 'rgba(243,222,192,0.98)';
-  toggleWrap.style.padding = '8px 10px';
-  toggleWrap.style.borderRadius = '10px';
-  toggleWrap.style.boxShadow = '0 4px 12px rgba(0,0,0,0.12)';
-  toggleWrap.style.display = 'flex';
-  toggleWrap.style.alignItems = 'center';
-  toggleWrap.style.gap = '6px';
-  const toggle = document.createElement('input');
-  toggle.type = 'checkbox';
-  toggle.id = 'autoContinueToggle';
-  toggle.checked = true; // 既定：ON
-  const toggleLabel = document.createElement('label');
-  toggleLabel.setAttribute('for', 'autoContinueToggle');
-  toggleLabel.textContent = '連続待機 ON/OFF';
-  toggleLabel.style.userSelect = 'none';
-  toggleWrap.appendChild(toggle);
-  toggleWrap.appendChild(toggleLabel);
-  document.body.appendChild(toggleWrap);
+  // ===== 連続待機トグル（まずは右上固定で挿入、無理ならカウンターにフォールバック） =====
+  let autoContinue = true; // 既定ON
+  (function mountAutoToggle() {
+    const wrap = document.createElement('div');
+    wrap.id = 'autoToggleWrap';
+    // 右上固定のスタイル
+    Object.assign(wrap.style, {
+      position: 'fixed',
+      right: '12px',
+      top: '56px',
+      zIndex: '11000',
+      background: 'rgba(243,222,192,0.98)',
+      padding: '8px 10px',
+      borderRadius: '10px',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px',
+      fontWeight: '700',
+      color: '#442d00'
+    });
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.id = 'autoContinueToggle';
+    input.checked = true;
+    const label = document.createElement('label');
+    label.htmlFor = 'autoContinueToggle';
+    label.textContent = '連続待機 ON/OFF';
+    label.style.userSelect = 'none';
 
-  // State
+    input.addEventListener('change', () => { autoContinue = input.checked; });
+
+    wrap.appendChild(input);
+    wrap.appendChild(label);
+
+    // まず body に追加
+    document.body.appendChild(wrap);
+
+    // 念のため可視確認、もし表示領域外になる/何かで消える等の時はカウンター内へ移動
+    setTimeout(() => {
+      const rect = wrap.getBoundingClientRect();
+      const visible = rect.width > 0 && rect.height > 0;
+      if (!visible) {
+        // フォールバック：カウンター内に配置
+        wrap.style.position = 'static';
+        wrap.style.boxShadow = 'none';
+        wrap.style.background = 'transparent';
+        const counter = document.querySelector('.counter');
+        if (counter) {
+          const row = document.createElement('div');
+          row.style.display = 'flex';
+          row.style.alignItems = 'center';
+          row.style.gap = '8px';
+          row.style.fontSize = '14px';
+          row.style.fontWeight = '700';
+          row.style.marginTop = '4px';
+          const caption = document.createElement('span');
+          caption.textContent = '音声:';
+          row.appendChild(caption);
+          row.appendChild(wrap);
+          counter.appendChild(row);
+        }
+      }
+    }, 50);
+  })();
+
+  // ===== State =====
   let totalRows = 0, totalCols = 0;
   // データ行: index 0 = 最下段（左→右）
   let cellMap = [];
@@ -280,14 +321,7 @@
   // ===== 音声認識（Android連続待機対応）=====
   let recognition = null;
   let recognizing = false;
-  // 連続待機ON/OFF（UIトグルと連動）
-  let autoContinue = toggle.checked;
-  let stopRequested = false; // ユーザーが停止ボタンを押したか
-
-  toggle.addEventListener('change', () => {
-    autoContinue = toggle.checked;
-    // 連続待機OFFへ切り替えた際、今録音中ならそのまま継続。onendの自動再開だけ止まります。
-  });
+  let stopRequested = false; // ユーザー停止
 
   function initRecognition(){
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -305,7 +339,7 @@
       recognizing = false;
       btnVoiceStart.textContent = '音声操作開始';
       btnVoiceStart.style.background = '';
-      // Androidは1回結果が出た後に勝手にonendすることが多いので自動再開
+      // Androidは1回でendになりがち → 自動再開（連続待機ONかつユーザー停止でないとき）
       if (!stopRequested && autoContinue) {
         try { rec.start(); } catch(e) { /* 二重start防止 */ }
       }
@@ -322,8 +356,7 @@
           const text = ev.results[i][0].transcript.trim();
           console.log('音声:', text);
           handleVoiceCommand(text);
-          // 連続待機中は speak() をガード（録音が切れるのを防ぐ）
-          // speakは別関数で制御
+          // 連続待機中は speak() で読み上げない（録音が切れるため）
         }
       }
     };
