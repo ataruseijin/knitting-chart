@@ -17,73 +17,7 @@
   const btnVoiceStart = document.getElementById('btnVoiceStart');
   const sizeChangeAlert = document.getElementById('size-change-alert');
 
-  // ===== 連続待機トグル（まずは右上固定で挿入、無理ならカウンターにフォールバック） =====
-  let autoContinue = true; // 既定ON
-  (function mountAutoToggle() {
-    const wrap = document.createElement('div');
-    wrap.id = 'autoToggleWrap';
-    // 右上固定のスタイル
-    Object.assign(wrap.style, {
-      position: 'fixed',
-      right: '12px',
-      top: '56px',
-      zIndex: '11000',
-      background: 'rgba(243,222,192,0.98)',
-      padding: '8px 10px',
-      borderRadius: '10px',
-      boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '6px',
-      fontWeight: '700',
-      color: '#442d00'
-    });
-    const input = document.createElement('input');
-    input.type = 'checkbox';
-    input.id = 'autoContinueToggle';
-    input.checked = true;
-    const label = document.createElement('label');
-    label.htmlFor = 'autoContinueToggle';
-    label.textContent = '連続待機 ON/OFF';
-    label.style.userSelect = 'none';
-
-    input.addEventListener('change', () => { autoContinue = input.checked; });
-
-    wrap.appendChild(input);
-    wrap.appendChild(label);
-
-    // まず body に追加
-    document.body.appendChild(wrap);
-
-    // 念のため可視確認、もし表示領域外になる/何かで消える等の時はカウンター内へ移動
-    setTimeout(() => {
-      const rect = wrap.getBoundingClientRect();
-      const visible = rect.width > 0 && rect.height > 0;
-      if (!visible) {
-        // フォールバック：カウンター内に配置
-        wrap.style.position = 'static';
-        wrap.style.boxShadow = 'none';
-        wrap.style.background = 'transparent';
-        const counter = document.querySelector('.counter');
-        if (counter) {
-          const row = document.createElement('div');
-          row.style.display = 'flex';
-          row.style.alignItems = 'center';
-          row.style.gap = '8px';
-          row.style.fontSize = '14px';
-          row.style.fontWeight = '700';
-          row.style.marginTop = '4px';
-          const caption = document.createElement('span');
-          caption.textContent = '音声:';
-          row.appendChild(caption);
-          row.appendChild(wrap);
-          counter.appendChild(row);
-        }
-      }
-    }, 50);
-  })();
-
-  // ===== State =====
+  // ===== 状態 =====
   let totalRows = 0, totalCols = 0;
   // データ行: index 0 = 最下段（左→右）
   let cellMap = [];
@@ -131,14 +65,13 @@
   }
 
   // ===== render =====
-  // 画面表示: 上から下へ（見た目の上が本当に上）
   function renderPattern(){
     if(!totalRows || !totalCols){
       patternDiv.innerHTML = '<div style="text-align:center;color:#7a5a2a;padding:18px;">編み図がありません</div>';
       return;
     }
     let html = '<table>';
-    // 表示は data の最上段（index totalRows-1）→ 最下段（index 0）
+    // 表示: 最上段（index totalRows-1）→ 最下段（index 0）
     for(let r = totalRows - 1; r >= 0; r--){
       const rowNumber = r + 1; // 1=最下段
       const isRightToLeft = (rowNumber % 2 === 1); // 奇数段=右→左
@@ -187,9 +120,7 @@
     if(td){
       td.classList.add('current-stitch');
       if(autoScroll){
-        // パターン内で中央へ
         td.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-        // 固定カウンターで隠れないよう微調整
         setTimeout(()=> {
           const rect = td.getBoundingClientRect();
           const viewportHeight = window.innerHeight;
@@ -318,10 +249,10 @@
   btnNextRow.addEventListener('click', ()=> nextRow());
   btnReset.addEventListener('click', ()=> resetCounter());
 
-  // ===== 音声認識（Android連続待機対応）=====
+  // ===== 音声認識（デフォルト連続待機 / 停止で完全停止）=====
   let recognition = null;
   let recognizing = false;
-  let stopRequested = false; // ユーザー停止
+  let stopRequested = false; // ユーザーが停止を押したらtrue
 
   function initRecognition(){
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -332,21 +263,22 @@
     rec.continuous = true; // 連続モード
     rec.onstart = () => {
       recognizing = true;
-      btnVoiceStart.textContent = autoContinue ? '音声停止（連続待機中）' : '音声停止';
+      btnVoiceStart.textContent = '音声停止（連続待機中）';
       btnVoiceStart.style.background = '#a05a00';
     };
     rec.onend = () => {
       recognizing = false;
       btnVoiceStart.textContent = '音声操作開始';
       btnVoiceStart.style.background = '';
-      // Androidは1回でendになりがち → 自動再開（連続待機ONかつユーザー停止でないとき）
-      if (!stopRequested && autoContinue) {
+      // ★自動再開：ユーザーが停止を押していない限り、常に再開
+      if (!stopRequested) {
         try { rec.start(); } catch(e) { /* 二重start防止 */ }
       }
     };
     rec.onerror = (e) => {
       console.warn('Speech error', e);
-      if (!stopRequested && autoContinue) {
+      // 一時的エラーでも止まることがある → 少し待って再開（ユーザー停止でないとき）
+      if (!stopRequested) {
         setTimeout(() => { try { rec.start(); } catch(_){} }, 500);
       }
     };
@@ -356,7 +288,7 @@
           const text = ev.results[i][0].transcript.trim();
           console.log('音声:', text);
           handleVoiceCommand(text);
-          // 連続待機中は speak() で読み上げない（録音が切れるため）
+          // 連続待機中は読み上げで録音が切れやすい → speak() でガード
         }
       }
     };
@@ -369,13 +301,20 @@
     if(/目プラス|めぷらす|目を進め|一つ進|すすめ|プラス|\+/.test(t)){ incrementStitch(); speak('目を一つ進めます'); return; }
     if(/目マイナス|めまいなす|目を戻|一つ戻|もどる|マイナス|\-/.test(t)){ decrementStitch(); speak('目を一つ戻します'); return; }
     if(/リセット|さいしょ|最初に戻/.test(t)){ resetCounter(); speak('リセットしました'); return; }
-    if(/終了|ストップ|やめる|停止/.test(t)){ if(recognition) { stopRequested = true; recognition.stop(); } speak('音声操作を停止します'); return; }
+    if(/終了|ストップ|やめる|停止/.test(t)){
+      if(recognition){
+        stopRequested = true;     // 以降は自動再開しない
+        try { recognition.stop(); } catch(_) {}
+      }
+      speak('音声操作を停止します');
+      return;
+    }
   }
 
   // 読み上げ：連続待機中はミュート（録音切断を防ぐ）
   function speak(text){
-    if (autoContinue && recognizing) {
-      if (navigator.vibrate) navigator.vibrate(30); // 軽いバイブのみ（任意）
+    if (recognizing) {
+      if (navigator.vibrate) navigator.vibrate(25); // 軽いバイブのみ（任意）
       return;
     }
     if (!('speechSynthesis' in window)) return;
@@ -387,6 +326,13 @@
 
   // ボタン：開始/停止トグル
   btnVoiceStart.addEventListener('click', ()=>{
+    // すでに録音中 → 停止（完全停止、再開は自動ではしない）
+    if (recognizing) {
+      stopRequested = true;
+      try { recognition && recognition.stop(); } catch(_) {}
+      return;
+    }
+    // 録音していない → 連続待機開始（以降、自動再開を続ける）
     if (!recognition) {
       recognition = initRecognition();
       if (!recognition) {
@@ -394,13 +340,8 @@
         return;
       }
     }
-    if (recognizing) {
-      stopRequested = true;
-      try { recognition.stop(); } catch(_) {}
-    } else {
-      stopRequested = false;
-      try { recognition.start(); } catch(_) {}
-    }
+    stopRequested = false;
+    try { recognition.start(); } catch(_) {}
   });
 
   // ===== 初期化 =====
